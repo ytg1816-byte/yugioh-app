@@ -19,13 +19,21 @@ if not gemini_api_key:
 # Gemini API 설정
 genai.configure(api_key=gemini_api_key)
 
-# 정식 모델 설정 (gemini-1.5-flash 사용)
-try:
-    model = genai.GenerativeModel('gemini-1.5-flash')
-except Exception:
-    model = genai.GenerativeModel('gemini-2.0-flash')
+# API 키 계정에서 사용 가능한 모델을 자동으로 감지하는 함수
+def get_available_model():
+    try:
+        # 내 API 키로 사용 가능한 모델 목록을 불러와 텍스트 생성이 가능한 첫 번째 모델 선택
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                return genai.GenerativeModel(m.name)
+    except Exception:
+        pass
+    # 예외 발생 시 기본 fallback 모델 설정
+    return genai.GenerativeModel('models/gemini-1.5-flash')
 
-# 통합 AI 데이터 추출 함수 (속도 개선 & 파싱 에러 방지)
+model = get_available_model()
+
+# 통합 AI 데이터 추출 함수
 def get_card_data_via_ai(query):
     prompt = f"""
     당신은 유희왕 카드 데이터베이스 전문가입니다.
@@ -47,7 +55,6 @@ def get_card_data_via_ai(query):
     for line in response.split('\n'):
         if line.startswith("ENGLISH_NAME:"):
             eng_name = line.replace("ENGLISH_NAME:", "").strip()
-            # 특수문자 및 따옴표 제거
             eng_name = re.sub(r'[\'"`\*]', '', eng_name)
         elif line.startswith("KOREAN_NAME:"):
             kor_name = line.replace("KOREAN_NAME:", "").strip()
@@ -92,7 +99,7 @@ with tab1:
                         if 'card_images' in card and card['card_images']:
                             st.image(card['card_images'][0]['image_url'], width=280)
                     else:
-                        st.info(f"💡 카드 이미지를 찾지 못했지만, AI 분석 결과는 아래와 같아.")
+                        st.info("💡 카드 이미지를 찾지 못했지만, AI 분석 결과는 아래와 같아.")
                     
                     st.markdown("#### 📜 공식 한국어 정보")
                     st.markdown(kor_info)
