@@ -19,19 +19,26 @@ if not gemini_api_key:
 # Gemini API 설정
 genai.configure(api_key=gemini_api_key)
 
-# API 키 계정에서 사용 가능한 모델을 자동으로 감지하는 함수
-def get_available_model():
-    try:
-        # 내 API 키로 사용 가능한 모델 목록을 불러와 텍스트 생성이 가능한 첫 번째 모델 선택
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                return genai.GenerativeModel(m.name)
-    except Exception:
-        pass
-    # 예외 발생 시 기본 fallback 모델 설정
-    return genai.GenerativeModel('models/gemini-1.5-flash')
-
-model = get_available_model()
+# 404 에러 방지용 자동 릴레이 호출 함수
+def call_gemini_with_fallback(prompt):
+    # 현재 활성화된 표준 모델 우선순위 리스트
+    candidate_models = [
+        'gemini-2.0-flash',
+        'gemini-1.5-flash',
+        'gemini-1.5-pro'
+    ]
+    
+    last_error = None
+    for model_name in candidate_models:
+        try:
+            m = genai.GenerativeModel(model_name)
+            res = m.generate_content(prompt)
+            return res.text
+        except Exception as e:
+            last_error = e
+            continue
+            
+    raise Exception(f"사용 가능한 AI 모델을 찾지 못했습니다. (원인: {last_error})")
 
 # 통합 AI 데이터 추출 함수
 def get_card_data_via_ai(query):
@@ -46,13 +53,13 @@ def get_card_data_via_ai(query):
     KOREAN_INFO: (종족/속성/레벨/공수 및 OCG 공식 한국어 카드 효과 텍스트)
     """
     
-    response = model.generate_content(prompt).text
+    response_text = call_gemini_with_fallback(prompt)
     
     eng_name = ""
     kor_name = query
     kor_info = ""
     
-    for line in response.split('\n'):
+    for line in response_text.split('\n'):
         if line.startswith("ENGLISH_NAME:"):
             eng_name = line.replace("ENGLISH_NAME:", "").strip()
             eng_name = re.sub(r'[\'"`\*]', '', eng_name)
@@ -62,7 +69,7 @@ def get_card_data_via_ai(query):
             kor_info = line.replace("KOREAN_INFO:", "").strip()
             
     if not kor_info:
-        kor_info = response
+        kor_info = response_text
         
     return eng_name, kor_name, kor_info
 
@@ -119,7 +126,7 @@ with tab2:
                     system_instruction = "당신은 유희왕 마스터 듀얼 및 OCG 1티어 플레이어입니다. 유저의 질문에 대해 한국어로 매우 자연스럽고 정확한 전개법, 카드 시너지, 덱 구축 팁을 제공하세요. 실전성 있는 조언을 해줘야 합니다."
                     full_prompt = f"{system_instruction}\n\n사용자 질문: {user_prompt}"
                     
-                    response = model.generate_content(full_prompt)
-                    st.markdown(response.text)
+                    answer = call_gemini_with_fallback(full_prompt)
+                    st.markdown(answer)
                 except Exception as e:
                     st.error(f"답변을 불러오지 못했어. (에러: {e})\nAPI 키가 정확한지 다시 확인해 줘!")
