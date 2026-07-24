@@ -16,31 +16,55 @@ if not gemini_api_key:
     st.info("👈 왼쪽 사이드바에 API Key를 넣어야 작동해!")
     st.stop()
 
-# Gemini API 설정
-genai.configure(api_key=gemini_api_key)
-
-# 404 에러 방지용 자동 릴레이 호출 함수
-def call_gemini_with_fallback(prompt):
-    # 현재 활성화된 표준 모델 우선순위 리스트
-    candidate_models = [
-        'gemini-2.0-flash',
+# 1. 내 API 키에서 실제로 '답변을 출력해내는' 모델을 실시간 테스트로 찾아내는 함수
+@st.cache_resource
+def get_working_model(api_key):
+    genai.configure(api_key=api_key)
+    
+    # 1차: 구글 API가 제공하는 목록 중 실제 호출 테스트
+    try:
+        available_models = genai.list_models()
+        for m in available_models:
+            if 'generateContent' in m.supported_generation_methods:
+                try:
+                    test_model = genai.GenerativeModel(m.name)
+                    test_model.generate_content("ping") # 실시간 핑 테스트
+                    return test_model, m.name
+                except Exception:
+                    continue
+    except Exception:
+        pass
+        
+    # 2차: 자주 사용되는 표준 모델명 후보군 직접 테스트
+    candidate_names = [
+        'models/gemini-1.5-flash',
+        'models/gemini-1.5-flash-latest',
+        'models/gemini-1.5-pro',
         'gemini-1.5-flash',
-        'gemini-1.5-pro'
+        'models/gemini-2.0-flash-exp'
     ]
     
-    last_error = None
-    for model_name in candidate_models:
+    for c_name in candidate_names:
         try:
-            m = genai.GenerativeModel(model_name)
-            res = m.generate_content(prompt)
-            return res.text
-        except Exception as e:
-            last_error = e
+            test_model = genai.GenerativeModel(c_name)
+            test_model.generate_content("ping")
+            return test_model, c_name
+        except Exception:
             continue
             
-    raise Exception(f"사용 가능한 AI 모델을 찾지 못했습니다. (원인: {last_error})")
+    return None, None
 
-# 통합 AI 데이터 추출 함수
+# 모델 연결
+model, active_model_name = get_working_model(gemini_api_key)
+
+if not model:
+    st.sidebar.error("❌ 연결 가능한 Gemini 모델을 찾지 못했습니다. API 키 권한을 확인해주세요.")
+    st.error("Gemini API 서버와 연결할 수 없습니다. API 키가 올바른지 확인해주세요.")
+    st.stop()
+else:
+    st.sidebar.success(f"✅ 연결 성공! ({active_model_name})")
+
+# AI 기반 카드 데이터 추출 함수
 def get_card_data_via_ai(query):
     prompt = f"""
     당신은 유희왕 카드 데이터베이스 전문가입니다.
@@ -53,7 +77,8 @@ def get_card_data_via_ai(query):
     KOREAN_INFO: (종족/속성/레벨/공수 및 OCG 공식 한국어 카드 효과 텍스트)
     """
     
-    response_text = call_gemini_with_fallback(prompt)
+    response = model.generate_content(prompt)
+    response_text = response.text
     
     eng_name = ""
     kor_name = query
@@ -73,7 +98,7 @@ def get_card_data_via_ai(query):
         
     return eng_name, kor_name, kor_info
 
-# YGOProDeck 이미지 안전 조회 함수
+# YGOProDeck 이미지 조회 함수
 def get_image_from_ygoprodeck(eng_name):
     if not eng_name:
         return None
@@ -126,7 +151,7 @@ with tab2:
                     system_instruction = "당신은 유희왕 마스터 듀얼 및 OCG 1티어 플레이어입니다. 유저의 질문에 대해 한국어로 매우 자연스럽고 정확한 전개법, 카드 시너지, 덱 구축 팁을 제공하세요. 실전성 있는 조언을 해줘야 합니다."
                     full_prompt = f"{system_instruction}\n\n사용자 질문: {user_prompt}"
                     
-                    answer = call_gemini_with_fallback(full_prompt)
-                    st.markdown(answer)
+                    response = model.generate_content(full_prompt)
+                    st.markdown(response.text)
                 except Exception as e:
-                    st.error(f"답변을 불러오지 못했어. (에러: {e})\nAPI 키가 정확한지 다시 확인해 줘!")
+                    st.error(f"답변을 불러오지 못했어. (에러: {e})")
