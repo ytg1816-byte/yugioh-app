@@ -17,7 +17,7 @@ if not gemini_api_key:
 
 genai.configure(api_key=gemini_api_key)
 # 가장 안정적인 최신 모델로 고정
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-2.5-flash')
 
 # 한국어 ➔ 영문명 변환 및 공식 한국어 텍스트 가져오는 함수
 def get_card_data_via_ai(query):
