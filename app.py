@@ -18,7 +18,7 @@ if not gemini_api_key:
 
 # Gemini AI 설정
 genai.configure(api_key=gemini_api_key)
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-2.5-flash')
 
 # YGOProDeck 카드 검색 함수 (환각 방지용 데이터 조회)
 def get_card_info(card_name):
